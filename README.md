@@ -52,11 +52,40 @@ A robust Node.js backend for tracking and managing daily habits. This applicatio
    ```
    npm install
    ```
-3. Copy `.env.example` to `.env` and update the values
-4. Start the development server:
+3. Copy `.env.example` to `.env` and update the values:
+   ```
+   cp .env.example .env
+   ```
+4. Edit the `.env` file to configure your environment
+5. Start the development server:
    ```
    npm run dev
    ```
+
+### Environment Configuration
+
+The application uses environment variables for configuration. These are loaded from a `.env` file in the project root.
+
+#### Required Environment Variables
+
+- `NODE_ENV`: The environment mode (`development`, `test`, or `production`)
+- `PORT`: The port number for the server
+- `JWT_SECRET`: Secret key for JWT token generation and validation
+- `DB_PATH`: Path to the SQLite database file
+
+#### Optional Environment Variables
+
+- `JWT_EXPIRATION`: JWT token expiration time in seconds (default: 86400 = 24 hours)
+- `LOG_LEVEL`: Log level (error, warn, info, http, verbose, debug, silly)
+- `LOG_ENABLED`: Enable or disable logging (true/false)
+- `CORS_ORIGINS`: Comma-separated list of allowed origins for CORS
+- `CORS_ALLOW_CREDENTIALS`: Set to true to allow credentials (cookies, authorization headers, etc.)
+- `RATE_LIMIT_MAX`: Maximum number of requests per window for rate limiting
+- `RATE_LIMIT_WINDOW`: Time window in milliseconds for rate limiting
+
+#### Environment-Specific Configuration
+
+The application supports different configurations for development, test, and production environments. These are defined in `src/config/index.js`.
 
 ## API Documentation
 
