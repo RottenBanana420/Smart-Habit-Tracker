@@ -1,13 +1,39 @@
 /**
- * Database schema initialization script
- * Creates tables and indexes if they don't exist
+ * Database Schema Initialization Module
+ *
+ * This module handles the creation and management of the database schema for the
+ * Habit Tracker application. It defines all tables, relationships, constraints,
+ * and indexes required by the application.
+ *
+ * The schema includes:
+ * - Users table for authentication and user management
+ * - Habits table for storing habit definitions
+ * - Habit logs table for tracking daily habit completion
+ *
+ * All tables use SQLite's built-in features for timestamps and foreign key constraints
+ * to maintain data integrity and track record creation/modification times.
  */
 const { withConnection } = require("./db");
 const { DatabaseError } = require("../utils/errors");
 
 /**
  * Initialize the database schema
+ *
+ * Creates all necessary tables and indexes for the application if they don't already exist.
+ * This function is idempotent and can be safely called multiple times without creating
+ * duplicate tables or losing data.
+ *
+ * The function creates:
+ * 1. Users table - Stores user authentication and profile information
+ * 2. Habits table - Stores habit definitions with frequency and date ranges
+ * 3. Habit logs table - Tracks daily completion status of habits
+ * 4. Performance indexes - Optimizes common query patterns
+ *
+ * Foreign key constraints ensure referential integrity between related tables,
+ * and unique constraints prevent duplicate entries where appropriate.
+ *
  * @returns {Promise<void>}
+ * @throws {DatabaseError} If schema initialization fails
  */
 async function initializeSchema() {
   try {
@@ -74,8 +100,19 @@ async function initializeSchema() {
 }
 
 /**
- * Reset the database (for testing purposes)
+ * Reset the database (for testing purposes only)
+ *
+ * Completely resets the database by dropping all tables and recreating them.
+ * This function is restricted to the test environment only as a safety measure
+ * to prevent accidental data loss in development or production.
+ *
+ * Tables are dropped in reverse order of their dependencies to avoid foreign key
+ * constraint violations. After dropping all tables, the schema is reinitialized
+ * with empty tables.
+ *
  * @returns {Promise<void>}
+ * @throws {Error} If called outside the test environment
+ * @throws {DatabaseError} If the reset operation fails
  */
 async function resetDatabase() {
   if (process.env.NODE_ENV !== "test") {

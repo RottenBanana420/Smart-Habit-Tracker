@@ -1,6 +1,16 @@
 /**
- * Database connection module
- * Manages SQLite database connections with connection pooling
+ * Database Connection Module
+ *
+ * This module manages SQLite database connections with a connection pooling mechanism
+ * to improve performance and resource utilization. It handles connection creation,
+ * pooling, and cleanup of idle connections.
+ *
+ * Key features:
+ * - Connection pooling with configurable pool size
+ * - Automatic cleanup of idle connections
+ * - Connection reuse to reduce overhead
+ * - Proper error handling and reporting
+ * - WAL journal mode in production for better performance
  */
 const sqlite3 = require("sqlite3").verbose();
 const { open } = require("sqlite");
@@ -17,8 +27,18 @@ let connectionPool = [];
 let poolInitialized = false;
 
 /**
- * Initialize the connection pool
+ * Initialize the database connection pool
+ *
+ * Creates a pool of database connections that can be reused across requests.
+ * This significantly improves performance by avoiding the overhead of creating
+ * new connections for each database operation. The pool size is configurable
+ * through the DB_POOL_SIZE environment variable.
+ *
+ * The function is idempotent - calling it multiple times will only initialize
+ * the pool once.
+ *
  * @returns {Promise<void>}
+ * @throws {DatabaseError} If pool initialization fails
  */
 async function initializeConnectionPool() {
   if (poolInitialized) return;
@@ -48,8 +68,17 @@ async function initializeConnectionPool() {
 }
 
 /**
- * Create a new database connection
- * @returns {Promise<Object>} SQLite database connection
+ * Create a new SQLite database connection
+ *
+ * Establishes a new connection to the SQLite database and configures it with
+ * optimal settings. In production, it uses Write-Ahead Logging (WAL) journal mode
+ * and NORMAL synchronous setting for better performance while maintaining data integrity.
+ *
+ * The function also enables foreign key constraints and sets a busy timeout to
+ * handle concurrent access scenarios.
+ *
+ * @returns {Promise<Object>} Configured SQLite database connection
+ * @throws {DatabaseError} If connection creation fails
  */
 async function createConnection() {
   try {
@@ -82,8 +111,17 @@ async function createConnection() {
 }
 
 /**
- * Get a connection from the pool
- * @returns {Promise<Object>} SQLite database connection
+ * Get a database connection from the pool
+ *
+ * Retrieves an available connection from the pool or creates a new one if all
+ * connections are in use. This implements a dynamic pool that can grow beyond
+ * the initial pool size during high load and shrink back during idle periods.
+ *
+ * Connections created beyond the pool size (extra connections) are marked and
+ * will be closed after they become idle to prevent resource leakage.
+ *
+ * @returns {Promise<Object>} SQLite database connection ready for use
+ * @throws {DatabaseError} If connection retrieval fails
  */
 async function getConnection() {
   if (!poolInitialized) {
@@ -116,7 +154,15 @@ async function getConnection() {
 
 /**
  * Release a connection back to the pool
- * @param {Object} connection - The connection to release
+ *
+ * Marks a connection as available for reuse after an operation is complete.
+ * For connections that were created beyond the pool size (extra connections),
+ * this function will close them if there are enough idle connections in the pool.
+ *
+ * This helps maintain the optimal pool size and prevents resource leakage
+ * during periods of varying load.
+ *
+ * @param {Object} connection - The database connection to release back to the pool
  */
 function releaseConnection(connection) {
   const connIndex = connectionPool.findIndex(
@@ -141,9 +187,25 @@ function releaseConnection(connection) {
 
 /**
  * Manage idle connections in the pool
+ *
+ * Periodically checks for and closes idle extra connections that exceed the
+ * configured idle timeout. This prevents resource leakage and ensures the
+ * connection pool stays at an optimal size.
+ *
+ * This function sets up an interval timer that runs every IDLE_TIMEOUT milliseconds
+ * to clean up unused connections.
+ *
+ * @returns {Object} The interval timer that can be cleared when needed
  */
+let idleConnectionTimer = null;
+
 function manageIdleConnections() {
-  setInterval(() => {
+  // Clear any existing timer to avoid duplicates
+  if (idleConnectionTimer) {
+    clearInterval(idleConnectionTimer);
+  }
+
+  idleConnectionTimer = setInterval(() => {
     const now = Date.now();
 
     // Close idle extra connections
@@ -155,12 +217,33 @@ function manageIdleConnections() {
       return true;
     });
   }, IDLE_TIMEOUT);
+
+  // Ensure the timer doesn't keep the process alive
+  idleConnectionTimer.unref();
+
+  return idleConnectionTimer;
 }
 
 /**
  * Execute a database operation with a connection from the pool
+ *
+ * This is the main function that should be used for all database operations.
+ * It automatically handles getting a connection from the pool, executing the
+ * operation, and releasing the connection back to the pool when done.
+ *
+ * The function ensures proper resource management even if the operation throws
+ * an exception by using try/finally.
+ *
+ * Usage example:
+ * ```
+ * const result = await withConnection(async (db) => {
+ *   return await db.all('SELECT * FROM users WHERE active = ?', [true]);
+ * });
+ * ```
+ *
  * @param {Function} operation - Function that takes a db connection and performs operations
  * @returns {Promise<any>} Result of the operation
+ * @throws {Error} Rethrows any error from the operation
  */
 async function withConnection(operation) {
   const connection = await getConnection();
@@ -172,11 +255,26 @@ async function withConnection(operation) {
 }
 
 /**
- * Close all database connections
+ * Close all database connections in the pool
+ *
+ * Properly shuts down all database connections in the pool. This should be called
+ * when the application is shutting down to ensure all resources are properly released.
+ *
+ * The function attempts to close each connection individually and logs any errors
+ * that occur during the process, but continues closing the remaining connections.
+ * It also clears any active timers to prevent memory leaks.
+ *
  * @returns {Promise<void>}
+ * @throws {DatabaseError} If there's a critical error during the shutdown process
  */
 async function closeAllConnections() {
   try {
+    // Clear the idle connection timer if it exists
+    if (idleConnectionTimer) {
+      clearInterval(idleConnectionTimer);
+      idleConnectionTimer = null;
+    }
+
     await Promise.all(
       connectionPool.map(async (conn) => {
         try {
@@ -200,4 +298,6 @@ module.exports = {
   initializeConnectionPool,
   withConnection,
   closeAllConnections,
+  // Export for testing purposes
+  _getIdleConnectionTimer: () => idleConnectionTimer,
 };

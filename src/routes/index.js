@@ -4,13 +4,26 @@
 const express = require("express");
 const { asyncHandler } = require("../utils/asyncHandler");
 const { NotFoundError } = require("../utils/errors");
+const authRoutes = require("./auth");
+const { protectedRoute } = require("../middleware/auth");
 
 const router = express.Router();
 
 // Health check endpoint
 router.get("/health", (req, res) => {
-  res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
+  const config = require("../config");
+  res.status(200).json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    environment: config.env,
+    database: {
+      path: config.db.path,
+    },
+  });
 });
+
+// Mount authentication routes
+router.use("/auth", authRoutes);
 
 // Example of using asyncHandler and custom errors
 router.get(
@@ -22,6 +35,30 @@ router.get(
     }
 
     res.json({ message: "Example endpoint working correctly" });
+  })
+);
+
+// Example of a protected route
+router.get(
+  "/protected",
+  protectedRoute(),
+  asyncHandler(async (req, res) => {
+    res.json({
+      message: "This is a protected route",
+      user: req.user,
+    });
+  })
+);
+
+// Example of a role-protected route
+router.get(
+  "/admin",
+  protectedRoute("admin"),
+  asyncHandler(async (req, res) => {
+    res.json({
+      message: "This is an admin-only route",
+      user: req.user,
+    });
   })
 );
 

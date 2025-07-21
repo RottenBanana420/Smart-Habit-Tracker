@@ -24,7 +24,15 @@
  */
 function asyncHandler(fn) {
   return (req, res, next) => {
-    Promise.resolve(fn(req, res, next)).catch(next);
+    try {
+      const result = fn(req, res, next);
+      return Promise.resolve(result).catch((err) => {
+        next(err);
+      });
+    } catch (error) {
+      next(error);
+      return Promise.resolve(); // Don't reject to avoid unhandled promise rejection
+    }
   };
 }
 
